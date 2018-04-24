@@ -100,15 +100,6 @@ public class Map
             map[i] = new int[15];
         }
 
-        whitePlayer = new Gamer();
-        whitePlayer.map = this;
-        whitePlayer.camp = Camp.White;
-        blackPlayer = new Gamer();
-        blackPlayer.map = this;
-        blackPlayer.camp = Camp.Black;
-        whitePlayer.controller = new UBotAIController();
-        blackPlayer.controller = new UBotAIController();
-
         cmdList.Clear();
     }
 
@@ -418,6 +409,8 @@ public class UBotAIController : AIController
 
     public UBotAIController()
     {
+        ThinkingTime = 0.0f;
+
         Fitness = Engine.start_fitness_score;
 
         Net = new UNeuronNet_Controller();
@@ -476,4 +469,9 @@ public class UBotAIController : AIController
         }
 
     }
+}
+
+public class GameLocalPlayerController:Controller
+{
+
 }

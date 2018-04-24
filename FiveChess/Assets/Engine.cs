@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class Engine : MonoBehaviour {
 
@@ -18,12 +19,31 @@ public class Engine : MonoBehaviour {
 
     List<Map> MapList = new List<Map>();
 
+    public bool showFisrtGame;  //显示第一对AI对弈
+
     public int step_count_per_gen = 10;
     //自动保存的时间(秒)
     public float auto_save_time = 30;
+
+    //神经网络个数
+    public int NetSize = 1000;
+
     double _auto_save_timer;
 
     double _learn_timer;
+
+    bool _inited;
+    bool _started;
+    bool _learn;
+    Map _gameMap;
+    int _stepCount;
+
+    public Button btnStartLearn;
+    public Button btnStartGame;
+    public Button btnPause;
+
+    public Text textTime;
+    public Text textTuns;
 
     public static byte[] Compress(byte[] inputBytes)
     {
@@ -54,8 +74,15 @@ public class Engine : MonoBehaviour {
 
 
 	// Use this for initialization
-	void Awake () {
+	void Start () {
+        btnStartGame.onClick.AddListener(StartGame);
+        btnStartLearn.onClick.AddListener(StartLearn);
+        btnPause.onClick.AddListener(Stop);
+	}
 
+
+    void StartLearn()
+    {
         if (LoadWeights)
         {
             try
@@ -72,7 +99,7 @@ public class Engine : MonoBehaviour {
         if (!LoadWeights)
         {
             UGenAlg.ConfigData Config = new UGenAlg.ConfigData();
-            Config.PopSize = 3000;
+            Config.PopSize = NetSize;
             Config.NumWeights = new UBotAIController().Net.GetWeightCount();
             Gen = new UGenAlg();
             Gen.Init(Config);
@@ -88,8 +115,18 @@ public class Engine : MonoBehaviour {
         for (int i = 0; i < Gen.Config.PopSize / 2; i++)
         {
             Map map = new Map();
+
+            map.whitePlayer = new Gamer();
+            map.whitePlayer.map = map;
+            map.whitePlayer.camp = Camp.White;
+            map.blackPlayer = new Gamer();
+            map.blackPlayer.map = map;
+            map.blackPlayer.camp = Camp.Black;
+            map.whitePlayer.controller = new UBotAIController();
+            map.blackPlayer.controller = new UBotAIController();
+
             MapList.Add(map);
-            if(i == 0)
+            if (i == 0 && showFisrtGame)
             {
                 board.InitMap(map);
             }
@@ -99,15 +136,56 @@ public class Engine : MonoBehaviour {
         if (LoadWeights)
             PutFitnessScores();
 
-        _lastTime = Time.realtimeSinceStartup;
-	}
+        _learn_timer = 0;
+        _stepCount = 0;
+
+        _started = true;
+        _inited = true;
+        _learn = true;
+    }
+
+
+    void StartGame()
+    {
+        Map map = new Map();
+
+        map.whitePlayer = new Gamer();
+        map.whitePlayer.map = map;
+        map.whitePlayer.camp = Camp.White;
+        map.blackPlayer = new Gamer();
+        map.blackPlayer.map = map;
+        map.blackPlayer.camp = Camp.Black;
+        map.whitePlayer.controller = new GameLocalPlayerController();
+
+        UBotAIController BotAI = new UBotAIController();
+        map.blackPlayer.controller = BotAI;
+
+        //设置AI
+        BotAI.Net.PutWeights(new List<double>(LoadBestWeightsFromFileForUse()[0]));
+
+        board.InitMap(map);
+        _gameMap = map;
+
+
+        _started = true;
+        _learn = false;
+        _inited = true;
+        
+    }
+
+    void Stop()
+    {
+        if(_inited)
+            _started = !_started;
+    }
+
 
     void LoadGenFromFile()
     {
         string FileName = Path.Combine(Application.streamingAssetsPath, "Gen.txt");
         Debug.Log("加载基因:" + FileName);
 
-        string jsonData = System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(FileName));
+        string jsonData = System.Text.Encoding.UTF8.GetString(( File.ReadAllBytes(FileName)));
         Gen = JsonUtility.FromJson<UGenAlg>(jsonData);
     }
 
@@ -153,7 +231,7 @@ public class Engine : MonoBehaviour {
             byte[] bytes = System.Text.Encoding.UTF8.GetBytes(UnityEngine.JsonUtility.ToJson(Gen));
 
             //保存当前优秀的AI
-            System.IO.File.WriteAllBytes(FileName, bytes);
+            System.IO.File.WriteAllBytes(FileName,( bytes));
         }
 
         //保存最好的AI的权重
@@ -274,22 +352,28 @@ public class Engine : MonoBehaviour {
         }
     }
 
-    float _lastTime;
-
 	// Update is called once per frame
 	void Update () {
+        if (!_started)
+            return;
+
+        if(!_learn)
+        {
+            _gameMap.Update(Time.deltaTime);
+            return;
+        }
+
+
         try
         {
-            float realDeltaTime = Time.realtimeSinceStartup - _lastTime;
-
-            _auto_save_timer += realDeltaTime;
+            _auto_save_timer += Time.deltaTime;
             if (_auto_save_timer >= auto_save_time)
             {
                 _auto_save_timer = 0.0;
                 SaveToFile();
             }
 
-            _learn_timer += realDeltaTime;
+            _learn_timer += Time.deltaTime;
 
             //下棋，计算适应性分数
             {
@@ -299,41 +383,68 @@ public class Engine : MonoBehaviour {
                 //下完一步(每边一步)
                 if (step_count_per_gen>0)
                 {
-                    for (int step = 0; step < step_count_per_gen; step++)
+                    //for (int step = 0; step < step_count_per_gen; step++)
                     {
                         for (int i = 0; i < MapList.Count; i++)
                         {
                             MapList[i].Update(Time.deltaTime);
-                            MapList[i].Update(Time.deltaTime);
-
                             if (MapList[i].gameOver)
                             {
                                 MapList[i].Restart();
                             }
                         }
                     }
+                    _stepCount++;
+
+                    if(_stepCount>=step_count_per_gen)
+                    {
+                        _stepCount = 0;
+                        //迭代一次
+                        Gen.Epoch();
+
+                        //将基因更新给神经网络
+                        PutWeightsToNet(Gen.GetWeights());
+                    }
                 }
                 else
                 {
+                    bool gameOver = true;
                     //下完所有的棋子
                     for (int i = 0; i < MapList.Count; i++)
                     {
-                        while (!MapList[i].gameOver)
+                        if (!MapList[i].gameOver)
                             MapList[i].Update(Time.deltaTime);
+
+                        if(!MapList[i].gameOver)
+                        {
+                            gameOver = false;
+                        }
                     }
+
+                    if(gameOver)
+                    {
+                        //迭代一次
+                        Gen.Epoch();
+
+                        //将基因更新给神经网络
+                        PutWeightsToNet(Gen.GetWeights());
+
+                        for (int i = 0; i < MapList.Count; i++)
+                        {
+                            if (MapList[i].gameOver)
+                            {
+                                MapList[i].Restart();
+                            }
+                        }
+                    }
+
                 }
             }
 
-            //迭代一次
-            Gen.Epoch();
-
-            //将基因更新给神经网络
-            PutWeightsToNet(Gen.GetWeights());
-
 
             //刷新界面
-            //LabelTun.text = string.Format("产生{0}代", Gen.Generation.ToString());
-            //LabelTime.text = string.Format("时间{0}:{1}:{2}", (int)(_learn_timer / 3600), ((int)_learn_timer % 3600) / 60, (int)_learn_timer % 60);
+            textTuns.text = string.Format("{0}", Gen.Generation.ToString());
+            textTime.text = string.Format("{0}:{1}:{2}", (int)(_learn_timer / 3600), ((int)_learn_timer % 3600) / 60, (int)_learn_timer % 60);
 
         }
         catch (Exception E)
