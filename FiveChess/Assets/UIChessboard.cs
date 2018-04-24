@@ -81,7 +81,7 @@ public class UIChessboard : MonoBehaviour {
         {
             Cmd c = cmdList[cmdList.Count - 1];
             GameObject.Destroy(c.chessObject);
-
+            map[c.x - 1][c.y - 1] = 0;
             cmdList.RemoveAt(cmdList.Count - 1);
         }
     }
