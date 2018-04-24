@@ -9,6 +9,9 @@ using ICSharpCode.SharpZipLib.GZip;
 
 
 public class UIChessboard : MonoBehaviour {
+    public static UIChessboard Instance;
+
+    public Camera uiCamera;
     public UnityEngine.UI.Image chessPrefabWhite;
     public UnityEngine.UI.Image chessPrefabBlack;
     public Transform chessRoot;
@@ -16,6 +19,11 @@ public class UIChessboard : MonoBehaviour {
     public float chessSpacing;
 
     Map _map;
+
+    void Awake()
+    {
+        Instance = this;
+    }
 
     public void InitMap(Map map)
     {
@@ -25,9 +33,14 @@ public class UIChessboard : MonoBehaviour {
         _map.onRestart = Restart;
     }
 
-    Vector3 GetChessCoord(int x,int y)
+    Vector3 GetChessWorldPos(int x,int y)
     {
         return new Vector3((x - 8) * chessSpacing, (y - 8) * chessSpacing);
+    }
+    public void GetChessPos(Vector3 worldPos,out int x,out int y)
+    {
+        x = (int)((worldPos.x + chessSpacing/2) / chessSpacing + 8);
+        y = (int)((worldPos.y + chessSpacing / 2) / chessSpacing + 8);
     }
 
     public void Do(Map.Cmd c)
@@ -41,7 +54,7 @@ public class UIChessboard : MonoBehaviour {
             c.chessObject = GameObject.Instantiate<GameObject>(chessPrefabBlack.gameObject, chessRoot);
         }
         RectTransform rc = c.chessObject.transform as RectTransform;
-        rc.anchoredPosition = GetChessCoord(c.x, c.y);
+        rc.anchoredPosition = GetChessWorldPos(c.x, c.y);
     }
 
     public void UnDo(Map.Cmd c)
@@ -473,5 +486,38 @@ public class UBotAIController : AIController
 
 public class GameLocalPlayerController:Controller
 {
+    protected Gamer _target;
 
+    Camera uiCamera;
+    public override void Attach(Gamer g)
+    {
+        base.Attach(g);
+        _target = g;
+
+        uiCamera = UIChessboard.Instance.GetComponent<Canvas>().worldCamera;
+    }
+
+    public override void Update(float deltaTime)
+    {
+        base.Update(deltaTime);
+
+        //选择棋子
+        if (Input.GetMouseButtonDown(0))
+        {
+            RectTransform rt = UIChessboard.Instance.chessRoot as RectTransform;
+            Vector2 pos;
+
+
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(rt, (Input.mousePosition), uiCamera, out pos))
+            {
+                Map.Cmd cmd = new Map.Cmd();
+                int x, y;
+                UIChessboard.Instance.GetChessPos(pos, out x, out y);
+                cmd.x = x;
+                cmd.y = y;
+                cmd.camp = _target.camp;
+                _target.map.Do(cmd);
+            }
+        }
+    }
 }
