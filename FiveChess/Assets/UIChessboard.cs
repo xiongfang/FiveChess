@@ -427,12 +427,6 @@ public class UBotAIController : AIController
         Fitness = Engine.start_fitness_score;
 
         Net = new UNeuronNet_Controller();
-        UNeuronNet.ConfigData Config = new UNeuronNet.ConfigData();
-        Config.NumInputs = 15*15+1;  //棋盘格子数+阵营
-        Config.NumHiddenLayer = 2; //隐藏层
-        Config.NumNeuronPerHiddenLayer = 32;    //每层神经元
-        Config.NumOutputs = 1;          //1个输出
-        Net.Init(Config);
     }
 
     protected override void Step()

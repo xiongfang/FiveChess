@@ -23,12 +23,12 @@ public class Engine : MonoBehaviour {
 
     public int step_count_per_gen = 10;
     //自动保存的时间(秒)
-    public float auto_save_time = 30;
+    //public float auto_save_time = 30;
 
     //神经网络个数
     public int NetSize = 1000;
 
-    double _auto_save_timer;
+    //double _auto_save_timer;
 
     double _learn_timer;
 
@@ -78,6 +78,7 @@ public class Engine : MonoBehaviour {
         btnStartGame.onClick.AddListener(StartGame);
         btnStartLearn.onClick.AddListener(StartLearn);
         btnPause.onClick.AddListener(Stop);
+        UnityEngine.Random.InitState((int)System.DateTime.Now.Ticks);
 	}
 
 
@@ -177,6 +178,11 @@ public class Engine : MonoBehaviour {
     {
         if(_inited)
             _started = !_started;
+
+        if(_learn)
+        {
+            SaveToFile();
+        }
     }
 
 
@@ -366,12 +372,12 @@ public class Engine : MonoBehaviour {
 
         try
         {
-            _auto_save_timer += Time.deltaTime;
-            if (_auto_save_timer >= auto_save_time)
-            {
-                _auto_save_timer = 0.0;
-                SaveToFile();
-            }
+            //_auto_save_timer += Time.deltaTime;
+            //if (_auto_save_timer >= auto_save_time)
+            //{
+            //    _auto_save_timer = 0.0;
+            //    SaveToFile();
+            //}
 
             _learn_timer += Time.deltaTime;
 
@@ -409,11 +415,14 @@ public class Engine : MonoBehaviour {
                 else
                 {
                     bool gameOver = true;
+                    int overCount = 0;
                     //下完所有的棋子
                     for (int i = 0; i < MapList.Count; i++)
                     {
                         if (!MapList[i].gameOver)
                             MapList[i].Update(Time.deltaTime);
+                        else
+                            overCount++;
 
                         if(!MapList[i].gameOver)
                         {
@@ -421,7 +430,7 @@ public class Engine : MonoBehaviour {
                         }
                     }
 
-                    if(gameOver)
+                    if (gameOver || (float)overCount / MapList.Count>2.0f/3.0f)
                     {
                         //迭代一次
                         Gen.Epoch();

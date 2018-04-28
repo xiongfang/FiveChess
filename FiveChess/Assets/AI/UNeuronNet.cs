@@ -7,50 +7,48 @@ using System.Collections.Generic;
 /// </summary>
 public abstract class UNeuronNet {
 
-    public List<UNeuronLayer> AllLayers;
+    public List<UNeuron> OutputLayer;
+    public List<UNeuron> BaseLayer;
 
-    public class ConfigData
-    {
-        //public int NumInputsPerNeuron = 10;
-        public int NumNeuronPerHiddenLayer = 10;
-        public int NumHiddenLayer = 1;
-        public int NumInputs = 10;
-        public int NumOutputs = 3;
-    }
+    //public class ConfigData
+    //{
+    //    //public int NumInputsPerNeuron = 10;
+    //    public int NumNeuronPerHiddenLayer = 10;
+    //    public int NumHiddenLayer = 1;
+    //    public int NumInputs = 10;
+    //    public int NumOutputs = 3;
+    //}
 
-    protected ConfigData Config;
+    //protected ConfigData Config;
 
-    public void Init(ConfigData config)
-    {
-        Config = config;
-        AllLayers = new List<UNeuronLayer>();
-        if (Config.NumHiddenLayer > 0)
-        {
-            AllLayers.Add(new UNeuronLayer(Config.NumNeuronPerHiddenLayer, Config.NumInputs));
+    //public void Init(ConfigData config)
+    //{
+    //    Config = config;
+    //    AllLayers = new List<UNeuronLayer>();
+    //    if (Config.NumHiddenLayer > 0)
+    //    {
+    //        AllLayers.Add(new UNeuronLayer(Config.NumNeuronPerHiddenLayer, Config.NumInputs));
 
-            for (int i = 0; i < Config.NumHiddenLayer - 1; i++)
-            {
-                AllLayers.Add(new UNeuronLayer(Config.NumNeuronPerHiddenLayer, Config.NumNeuronPerHiddenLayer));
-            }
+    //        for (int i = 0; i < Config.NumHiddenLayer - 1; i++)
+    //        {
+    //            AllLayers.Add(new UNeuronLayer(Config.NumNeuronPerHiddenLayer, Config.NumNeuronPerHiddenLayer));
+    //        }
 
-            AllLayers.Add(new UNeuronLayer(Config.NumOutputs, Config.NumNeuronPerHiddenLayer));
-        }
-        else
-        {
-            AllLayers.Add(new UNeuronLayer(Config.NumOutputs, Config.NumInputs));
-        }
-    }
+    //        AllLayers.Add(new UNeuronLayer(Config.NumOutputs, Config.NumNeuronPerHiddenLayer));
+    //    }
+    //    else
+    //    {
+    //        AllLayers.Add(new UNeuronLayer(Config.NumOutputs, Config.NumInputs));
+    //    }
+    //}
 
     //从神经网络读取权重
     public List<double> GetWeights()
     {
         List<double> Weights = new List<double>();
-        for (int i = 0; i < AllLayers.Count; i++)
+        for (int i = 0; i < OutputLayer.Count; i++)
         {
-            for (int j = 0; j < AllLayers[i].Neurons.Length; j++)
-            {
-                Weights.AddRange(AllLayers[i].Neurons[j].InputWeights);
-            }
+            OutputLayer[i].GetWeights(Weights);
         }
         return Weights;
     }
@@ -58,29 +56,16 @@ public abstract class UNeuronNet {
     //替换神经网络的权重
     public void PutWeights(List<double> Weights)
     {
-        int index = 0;
-        for (int i = 0; i < AllLayers.Count; i++)
+        for (int i = 0; i < OutputLayer.Count; i++)
         {
-            for (int j = 0; j < AllLayers[i].Neurons.Length; j++)
-            {
-                AllLayers[i].Neurons[j].InputWeights = Weights.GetRange(index, AllLayers[i].Neurons[j].InputWeights.Length).ToArray();
-                index += AllLayers[i].Neurons[j].InputWeights.Length;
-            }
+            OutputLayer[i].PutWeights(Weights);
         }
     }
 
     //统计权重数量
     public int GetWeightCount()
     {
-        int count = 0;
-        for (int i = 0; i < AllLayers.Count; i++)
-        {
-            for (int j = 0; j < AllLayers[i].Neurons.Length; j++)
-            {
-                count += AllLayers[i].Neurons[j].InputWeights.Length;
-            }
-        }
-        return count;
+        return GetWeights().Count;
     }
 }
 
@@ -91,44 +76,26 @@ public abstract class UNeuronNet {
 public class UNeuronNet_Test : UNeuronNet
 {
 
-    public static double Bias = -1.0;
-    public static double ActivationResponse = 1.0f;
-
-
-    double Sigmod(double activation, double response)
-    {
-        return 1.0 / (1.0 + System.Math.Exp(-activation / response));
-    }
-
     public double[] Update(double[] inputs)
     {
+        for(int i=0;i<BaseLayer.Count;i++)
+        {
+            BaseLayer[i].Output = inputs[i];
+        }
+
+        foreach(var o in OutputLayer)
+        {
+            o.SetDirty();
+        }
+
         List<double> outputs = new List<double>();
 
-        for (int i = 0; i < AllLayers.Count; i++)
+        for (int j = 0; j < OutputLayer.Count; j++)
         {
-            if (i > 0)
-            {
-                inputs = outputs.ToArray();
-            }
-            outputs.Clear();
-
-
-            for (int j = 0; j < AllLayers[i].Neurons.Length; j++)
-            {
-                double NetInputs = 0;
-                int WeightIndex = 0;
-                //算权重和输入的和
-                for (int k = 0; k < AllLayers[i].Neurons[j].InputWeights.Length - 1; k++)
-                {
-                    NetInputs += AllLayers[i].Neurons[j].InputWeights[k] * inputs[WeightIndex++];
-                }
-                //加入偏移
-                NetInputs += AllLayers[i].Neurons[j].InputWeights[AllLayers[i].Neurons[j].InputWeights.Length - 1] * Bias;
-
-                //输出
-                outputs.Add(Sigmod(NetInputs, ActivationResponse));
-            }
+            //输出
+            outputs.Add(OutputLayer[j].GetOutput());
         }
+
         return outputs.ToArray();
     }
 }
@@ -149,22 +116,85 @@ public class UNeuronNet_Test : UNeuronNet
 /// </summary>
 public class UNeuronNet_Controller: UNeuronNet_Test
 {
+    UNeuronRate _outputNode;
+    public UNeuronNet_Controller()
+    {
+        //输入
+        BaseLayer = new List<UNeuron>();
+        for (int i = 0; i < 15 * 15 + 1; i++)
+        {
+            BaseLayer.Add(new UNeuron(0));
+        }
+
+        
+        //第一个隐藏层
+        List<UNeuron> layer1 = new List<UNeuron>();
+        for (int i = 0; i < 5;i++)
+        {
+            UNeuronSigmod node = new UNeuronSigmod(BaseLayer.Count);
+
+            for (int j = 0; j < node.Inputs.Length; j++)
+            {
+                node.Inputs[j] = BaseLayer[j];
+            }
+
+            layer1.Add(node);
+        }
+
+        //第二个隐藏层
+        List<UNeuron> layer2 = new List<UNeuron>();
+        for (int i = 0; i < 15 * 15; i++)
+        {
+            UNeuronSigmod node = new UNeuronSigmod(layer1.Count);
+
+            for (int j = 0; j < node.Inputs.Length; j++)
+            {
+                node.Inputs[j] = layer1[j];
+            }
+
+            layer2.Add(node);
+        }
+
+        //第三层是一个几率
+
+        OutputLayer = new List<UNeuron>();
+        _outputNode = new UNeuronRate(15 * 15);
+        OutputLayer.Add(_outputNode);
+        for (int i = 0; i < _outputNode.Inputs.Length; i++)
+        {
+            _outputNode.Inputs[i] = layer2[i];
+        }
+    }
+
     double[] GetInputs(Map input)
     {
-        double[] outputs = new double[Config.NumInputs];
+        List<double> outputs = new List<double>();
 
-        int output_index = 0;
         for (int i = 0; i < input.map.Length; i++)
         {
             for (int j = 0; j < input.map[i].Length; j++)
             {
-                outputs[output_index++] = (input.map[i][j]);
+                outputs.Add(input.map[i][j]);
             }
         }
 
-        outputs[output_index++] = Map.GetCampMapValue( input.currentCamp);
+        outputs.Add(Map.GetCampMapValue( input.currentCamp));
 
-        return outputs;
+        return outputs.ToArray();
+    }
+
+    int[] GetInputsRate(Map input)
+    {
+        List<int> outputs = new List<int>();
+
+        for (int i = 0; i < input.map.Length; i++)
+        {
+            for (int j = 0; j < input.map[i].Length; j++)
+            {
+                outputs.Add(input.map[i][j]==0?1:0);
+            }
+        }
+        return outputs.ToArray();
     }
 
     List<Map.Cmd> GetCommandList(Map input)
@@ -189,15 +219,21 @@ public class UNeuronNet_Controller: UNeuronNet_Test
 
     public Map.Cmd Update(Map inputs)
     {
-        List<Map.Cmd> CmdList = GetCommandList(inputs);
-        if (CmdList.Count == 0)
-        {
-            return null;
-        }
-
+        //List<Map.Cmd> CmdList = GetCommandList(inputs);
+        //if (CmdList.Count == 0)
+        //{
+        //    return null;
+        //}
+        _outputNode.SetInputPos(GetInputsRate(inputs));
         double[] outputs = Update(GetInputs(inputs));
-        int index = Mathf.FloorToInt((float)(outputs[0] * CmdList.Count));
-        index = Mathf.Clamp(index, 0, CmdList.Count - 1);
-        return CmdList[index];
+
+        int index = Mathf.FloorToInt((float)(outputs[0]));
+
+        Map.Cmd cmd = new Map.Cmd();
+        cmd.x = index/15 + 1;
+        cmd.y = index%15 + 1;
+        cmd.camp = inputs.currentCamp;
+
+        return cmd;
     }
 }
